@@ -16,14 +16,29 @@ If you don't have any QEMU binary on your system, you can install the
 
 ## Installation
 
-Copy the shell script to somewhere in your `$PATH`:
+### Git repository
+
+Clone this git repository somewhere in your filesystem
 
 ```bash
-install -Dpm0755 ./vmbuddy.sh $HOME/.local/bin/vmbuddy
+mkdir -p "${HOME}/opt/tulilirockz"
+git clone "https://github.com/tulilirockz/vmbuddy" "${HOME}/opt/tulilirockz/vmbuddy"
 ```
 
-You can also `curl` it into `$PATH`:
+Then you can symlink the vmbuddy script into somewhere in your `$PATH` variable:
+
+```bash
+ln -s "${PWD}/vmbuddy.sh" "${HOME}/.local/bin/vmbuddy"
+```
+
+This allows you to get updates by `git pull`.
+
+### Curl (not recommended)
+
+You can also `curl` vmbuddy into your `$PATH`:
 
 ```bash
 curl -fsSL "https://raw.githubusercontent.com/tulilirockz/vmbuddy/refs/heads/main/vmbuddy.sh" | install -Dpm0755 /dev/stdin "${HOME}/.local/bin/vmbuddy"
 ```
+
+Make sure that the script was properly fetched and has the expected contents by examining the installed script on `${HOME}/.local/bin/vmbuddy` or wherever else you've installed it to.
