@@ -33,7 +33,7 @@ Options:
 	--ram/-r:			RAM to be allocated to the virtual machine (i.e. 8G, 400M)
 	--cpu/-c:			Virtual CPUs to be allocated to the virtual machine (i.e. 8)
 	--iso/-i:			ISO file to be mounted (and booted) to the virtual machine (/path/to/iso)
-	--audio-type/--audio:		Type of audio device to be allocated to the VM (ich9/none)
+	--audio-type/--audio:		Type of audio device to be allocated to the VM (pulseaudio/ich9/none)
 	--dry-run/-d:			Only print the QEMU command generated
 	--flatpak/-f:			Run with QEMU flatpak
 	--verbose/--debug/-v:		Show more verbosity
@@ -47,7 +47,7 @@ QEMU_RUNNER_BINARY="${QEMU_RUNNER_BINARY:-}"
 QEMU_RUNNER_UEFI_BINARY="${QEMU_RUNNER_UEFI_BINARY:-}"
 QEMU_RUNNER_CPUS="${QEMU_RUNNER_CPUS:-$(($(nproc) / 2))}"
 QEMU_RUNNER_RAM="${QEMU_RUNNER_RAM:-4G}"
-QEMU_RUNNER_AUDIO_TYPE="${QEMU_RUNNER_AUDIO_TYPE:-ich9}"
+QEMU_RUNNER_AUDIO_TYPE="${QEMU_RUNNER_AUDIO_TYPE:-pulseaudio}"
 QEMU_RUNNER_ACCELERATION_TYPE="${QEMU_RUNNER_ACCELERATION_TYPE:-venus}"
 QEMU_RUNNER_DISPLAY_TYPE="${QEMU_RUNNER_DISPLAY_TYPE:-gtk}"
 QEMU_RUNNER_DRY_RUN="${QEMU_RUNNER_DRY_RUN:-0}"
@@ -234,6 +234,17 @@ if [ "${QEMU_RUNNER_AUDIO_TYPE}" == "ich9" ] ; then
   AUDIO_ARGUMENTS=(
     "-device" "ich9-intel-hda,id=sound0,bus=pcie.0,addr=0x1b"
     "-device" "hda-duplex,id=sound0-codec0,bus=sound0.0,cad=0"
+    "-global" "ICH9-LPC.disable_s3=1"
+    "-global" "ICH9-LPC.disable_s4=1"
+    "-global" "ICH9-LPC.noreboot=off"
+  )
+fi
+
+if [ "${QEMU_RUNNER_AUDIO_TYPE}" == "pulseaudio" ] ; then
+  AUDIO_ARGUMENTS=(
+    "-audiodev" "pa,id=snd0,server=unix:${XDG_RUNTIME_DIR:-/run/user/$(id -u)}/pulse/native"
+    "-device" "ich9-intel-hda,id=sound0,bus=pcie.0,addr=0x1b"
+    "-device" "hda-duplex,id=sound0-codec0,audiodev=snd0"
     "-global" "ICH9-LPC.disable_s3=1"
     "-global" "ICH9-LPC.disable_s4=1"
     "-global" "ICH9-LPC.noreboot=off"
