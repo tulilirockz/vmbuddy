@@ -10,6 +10,20 @@ invalid_args_die() {
   exit 1
 }
 
+invalid_args_check() {
+  USER_VALUE="${1}"
+  shift
+  INVALID=1
+  for expected_value in "${@}"; do
+    [ "${expected_value}" == "${USER_VALUE}" ] && INVALID=0
+  done
+
+  if [ "${INVALID}" == 1 ] ; then
+    printf >&2 "%s" "ERROR: Invalid argument specified for flag, expected: ${*}"
+    exit 1
+  fi
+}
+
 show_help()
 {
 	cat <<EOF
@@ -79,6 +93,7 @@ while :; do
     -b | --binary)
       if [ -n "$2" ]; then
         QEMU_RUNNER_BINARY="${2}"
+        [ ! -e "$2" ] && printf >&2 "%s" "Warning: QEMU binary not found in filesystem"
         shift
         shift
       else
@@ -88,6 +103,7 @@ while :; do
     -u | --uefi | --uefi-binary)
       if [ -n "$2" ]; then
         QEMU_RUNNER_UEFI_BINARY="${2}"
+        [ ! -e "$2" ] && printf >&2 "%s" "Warning: UEFI binary not found in filesystem"
         shift
         shift
       else
@@ -97,6 +113,7 @@ while :; do
     -m | --machine | --machine-type)
       if [ -n "$2" ]; then
         QEMU_RUNNER_MACHINE_TYPE="${2}"
+        invalid_args_check "${2}" "bios" "uefi"
         shift
         shift
       else
@@ -106,6 +123,7 @@ while :; do
     --audio | --audio-type)
       if [ -n "$2" ]; then
         QEMU_RUNNER_AUDIO_TYPE="${2}"
+        invalid_args_check "${2}" "pulseaudio" "ich9"
         shift
         shift
       else
@@ -115,6 +133,7 @@ while :; do
     -a | --accel | --acceleration-type)
       if [ -n "$2" ]; then
         QEMU_RUNNER_ACCELERATION_TYPE="${2}"
+        invalid_args_check "${2}" "virgl" "venus"
         shift
         shift
       else
@@ -149,6 +168,7 @@ while :; do
     -c | --cpu)
       if [ -n "$2" ]; then
         QEMU_RUNNER_CPUS="${2}"
+        [ "${QEMU_RUNNER_CPUS}" == 0 ] && invalid_args_die
         shift
         shift
       else
