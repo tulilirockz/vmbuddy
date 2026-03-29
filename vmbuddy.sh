@@ -133,7 +133,7 @@ while :; do
     -a | --accel | --acceleration-type)
       if [ -n "$2" ]; then
         QEMU_RUNNER_ACCELERATION_TYPE="${2}"
-        invalid_args_check "${2}" "virgl" "venus"
+        invalid_args_check "${2}" "virgl" "venus" "none"
         shift
         shift
       else
