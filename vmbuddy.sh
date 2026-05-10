@@ -32,14 +32,14 @@ Usage:
 	${VMBUDDY_BINARY_NAME} /path/to/image
 	${VMBUDDY_BINARY_NAME} --iso /path/to/iso /path/to/image
 	${VMBUDDY_BINARY_NAME} --cpu 8 --ram 16G /path/to/image
-	${VMBUDDY_BINARY_NAME} --accel venus --iso /path/to/iso
+	${VMBUDDY_BINARY_NAME} --accel native-drm --iso /path/to/iso
 
 Options:
 
 	--binary/-b:			QEMU binary to be used (i.e.: qemu-system-$(arch))
 	--uefi-binary/-u:		QEMU UEFI binary to be used (i.e.: /path/to/edk2)
 	--machine-type/--machine/-m:	Firmware used to boot the virtual machine (uefi/bios)
-	--acceleration-type/--accel/-a:	Method for GPU acceleration on the virtual machine (venus/virgl/none)
+	--acceleration-type/--accel/-a:	Method for GPU acceleration on the virtual machine (native-drm/venus/virgl/none)
 	--display/-d:			QEMU display type (sdl/gtk/console)
 	--ram/-r:			RAM to be allocated to the virtual machine (i.e. 8G, 400M)
 	--cpu/-c:			Virtual CPUs to be allocated to the virtual machine (i.e. 8)
@@ -73,7 +73,7 @@ QEMU_RUNNER_UEFI_BINARY="${QEMU_RUNNER_UEFI_BINARY:-}"
 QEMU_RUNNER_CPUS="${QEMU_RUNNER_CPUS:-$(($(nproc) / 2))}"
 QEMU_RUNNER_RAM="${QEMU_RUNNER_RAM:-4G}"
 QEMU_RUNNER_AUDIO_TYPE="${QEMU_RUNNER_AUDIO_TYPE:-pulseaudio}"
-QEMU_RUNNER_ACCELERATION_TYPE="${QEMU_RUNNER_ACCELERATION_TYPE:-venus}"
+QEMU_RUNNER_ACCELERATION_TYPE="${QEMU_RUNNER_ACCELERATION_TYPE:-"native-drm"}"
 QEMU_RUNNER_DISPLAY_TYPE="${QEMU_RUNNER_DISPLAY_TYPE:-gtk}"
 QEMU_RUNNER_DRY_RUN="${QEMU_RUNNER_DRY_RUN:-0}"
 QEMU_RUNNER_MACHINE_TYPE="${QEMU_RUNNER_MACHINE_TYPE:-uefi}"
@@ -175,7 +175,7 @@ while :; do
     -a | --accel | --acceleration-type)
       if [ -n "$2" ]; then
         QEMU_RUNNER_ACCELERATION_TYPE="${2}"
-        invalid_args_check "${2}" "virgl" "venus" "none"
+        invalid_args_check "${2}" "native-drm" "virgl" "venus" "none"
         shift
         shift
       else
@@ -264,14 +264,20 @@ fi
 SANDBOX_ARGUMENTS=(
   "-sandbox" "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"
 )
-if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] ; then
+if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] || [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "native-drm" ] ; then
   VENUS_ARGUMENTS=(
     "-display" "${QEMU_RUNNER_DISPLAY_TYPE:-gtk},gl=on,show-cursor=off"
     "-object" "memory-backend-memfd,id=mem1,size=${QEMU_RUNNER_RAM}"
     "-machine" "memory-backend=mem1"
-    "-device" "virtio-vga-gl,hostmem=${QEMU_RUNNER_RAM},blob=true,venus=true"
     "-vga" "none"
   )
+
+  if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] ; then
+    VENUS_ARGUMENTS+=("-device" "virtio-vga-gl,hostmem=${QEMU_RUNNER_RAM},blob=true,venus=true")
+  else
+    VENUS_ARGUMENTS+=("-device" "virtio-vga-gl,drm_native_context=on,hostmem=${QEMU_RUNNER_RAM},blob=true,venus=true")
+  fi
+
   SANDBOX_ARGUMENTS=()
 fi
 
@@ -360,7 +366,7 @@ exec ${DRY_RUN_ARGUMENTS} ${QEMU_RUNNER_BINARY} \
   -enable-kvm \
   -cpu host \
   -device driver=qemu-xhci \
-  -device usb-tablet \
+  -usb -device usb-tablet \
   -rtc base=utc,driftfix=slew \
   -m "${QEMU_RUNNER_RAM}" \
   -smp "${QEMU_RUNNER_CPUS}" \
