@@ -5,9 +5,7 @@ QEMU wrapper written in Bash with sensible defaults
 ```bash
 vmbuddy /path/to/disk-image
 ```
-<img width="3440" height="1440" alt="image" src="https://github.com/user-attachments/assets/c0e22aa0-6136-4b6c-a5dc-5b3c42de6cc6" />
-
-
+<img width="3438" height="1440" alt="Screenshot of a host Zirconium system running a GNOME OS virtual machine through vmbuddy, at the left, there is a terminal running `glxgears`, running at 3351 FPS, in the middle, there is a VKCube window at 120FPS, and at the right there is a sample GNOME OS fastfetch run." src="https://github.com/user-attachments/assets/e22b75c9-bbc1-44fe-964a-724879ab81f9" />
 
 This will autodetect a valid QEMU binary on your system and launch a VM for you with Venus, UEFI and other
 virtualization goodies
