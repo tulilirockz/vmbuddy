@@ -331,7 +331,7 @@ if [ -n "${QEMU_RUNNER_IMAGE_FILES[*]}" ] ; then
   )
   HD_NUMBER=1
   for IMAGE_FILE in "${QEMU_RUNNER_IMAGE_FILES[@]}" ; do
-    FILETYPE="$(sed "s/img/raw/" <<< "$(cut -d. -f2 <<< "$IMAGE_FILE")")"
+    FILETYPE="$(sed "s/img/raw/" <<< "${IMAGE_FILE##*.}")"
     IMAGE_FILE_ARGUMENTS+=(
       "-device" "scsi-hd,drive=hd${HD_NUMBER}"
       "-drive" "if=none,id=hd${HD_NUMBER},file=${IMAGE_FILE},media=disk,snapshot=off,format=${FILETYPE}"
