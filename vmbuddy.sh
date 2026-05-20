@@ -303,7 +303,8 @@ if [ "${QEMU_RUNNER_TPM2}" == "1" ] ; then
       --create-platform-cert \
       --create-spk \
       --tpm2 \
-      --create-config-files overwrite &>/dev/null
+      --create-config-files \
+      --overwrite &>/dev/null
   fi
 
   ${QEMU_RUNNER_SWTPM_BINARY} socket --tpmstate "dir=${QEMU_RUNNER_TPM_STATE_DIR}" \
