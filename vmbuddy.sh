@@ -38,7 +38,9 @@ Options:
 
 	--create:			Allocate space for non-existent disk images
 	--create-size:			Size for newly create disk images
-	--volume/-v:			Path to folder to be shared to the virtual machine (via 9p), can be specified multiple times. (format: source:mount_tag, if no tag is specified the foler name with be the tag)
+	--volume/-v:			Path to folder to be shared to the virtual machine (via 9p), can be specified multiple times. (format: source:mount_tag, if no tag is specified the folder name with be the tag)
+	--port/-p:			Ports to be shared from/to the guest from/to the host, can be specified multiple times. (format: host_port:guest_port, if no guest port is specified it'll be the same as the host's)
+	--no-network:			Run VM without a network connection
 	--binary/-b:			QEMU binary to be used (i.e.: qemu-system-$(uname -m))
 	--uefi-binary/-u:		QEMU UEFI binary to be used (i.e.: /path/to/edk2)
 	--machine-type/--machine/-m:	Firmware used to boot the virtual machine (uefi/bios)
@@ -86,6 +88,7 @@ QEMU_EXTRA_ARGS="${QEMU_EXTRA_ARGS:-}"
 QEMU_RUNNER_ISO_FILE="${QEMU_RUNNER_ISO_FILE:-}"
 QEMU_RUNNER_IMAGE_FILES=( ${QEMU_RUNNER_IMAGE_FILES} )
 QEMU_RUNNER_VOLUMES=( ${QEMU_RUNNER_VOLUMES} )
+QEMU_RUNNER_PORTS=( ${QEMU_RUNNER_PORTS} )
 VMBUDDY_AUTODETECT_QEMU="${VMBUDDY_AUTODETECT_QEMU:-1}"
 QEMU_RUNNER_BINARY="${QEMU_RUNNER_BINARY:-$(system_or_fallback "qemu-system-$(uname -m)" "flatpak run --command=qemu-system-$(uname -m) org.virt_manager.virt-manager")}"
 QEMU_RUNNER_TPM2="${QEMU_RUNNER_TPM2:-1}"
@@ -94,6 +97,7 @@ QEMU_RUNNER_SWTPM_BINARY="${QEMU_RUNNER_SWTPM_BINARY:-$(system_or_fallback "swtp
 QEMU_RUNNER_SWTPM_SETUP_BINARY="${QEMU_RUNNER_SWTPM_SETUP_BINARY:-$(system_or_fallback "swtpm_setup" "flatpak run --command=swtpm_setup org.virt_manager.virt-manager")}"
 QEMU_RUNNER_VSOCK="${QEMU_RUNNER_VSOCK:-1}"
 QEMU_RUNNER_VSOCK_CID="${QEMU_RUNNER_VSOCK_CID:-$(seq 1 9 | shuf | tr -d '\n')}"
+QEMU_RUNNER_NETWORK="${QEMU_RUNNER_NETWORK:-1}"
 VMBUDDY_CREATE_IMAGE_FILES="${VMBUDDY_CREATE_IMAGE_FILES:-0}"
 VMBUDDY_CREATE_SIZE="${VMBUDDY_CREATE_SIZE:-20G}"
 
@@ -114,6 +118,10 @@ while :; do
     --no-tpm)
       shift
       QEMU_RUNNER_TPM2="0"
+      ;;
+    --no-network)
+      shift
+      QEMU_RUNNER_NETWORK="0"
       ;;
     --no-vsock)
       shift
@@ -275,6 +283,15 @@ while :; do
       	break
       fi
       ;;
+    -p | --port)
+      if [ -n "$2" ]; then
+        QEMU_RUNNER_PORTS+=("$2")
+        shift
+        shift
+      else
+      	break
+      fi
+      ;;
   	--)
       shift
       QEMU_EXTRA_ARGS="$*"
@@ -321,6 +338,26 @@ for VOLUME_STATEMENT in "${QEMU_RUNNER_VOLUMES[@]}" ; do
     "-virtfs" "local,path=${VOLUME_FOLDER},mount_tag=${VOLUME_TAG},security_model=mapped-xattr"
   )
 done
+
+NETWORK_ARGUMENTS=()
+if [ "${QEMU_RUNNER_NETWORK}" == "1" ] ; then
+  NETWORK_ARGUMENTS=(
+    "-net" "nic,model=virtio"
+  )
+
+  for PORT_STATEMENT in "${QEMU_RUNNER_PORTS[@]}" ; do
+    PORT_HOST="$(cut -f1 -d: <<< "${PORT_STATEMENT}")"
+    PORT_GUEST="$(cut -f2 -d: <<< "${PORT_STATEMENT}")"
+
+    if [ "${PORT_GUEST}" == "${PORT_STATEMENT}" ] ; then
+      PORT_GUEST="${PORT_HOST}"
+    fi
+
+    PORTS_STRING="${PORTS_STRING},hostfwd=tcp::${PORT_HOST}-:${PORT_GUEST}"
+    PORTS_STRING="${PORTS_STRING},hostfwd=udp::${PORT_HOST}-:${PORT_GUEST}"
+  done
+  NETWORK_ARGUMENTS+=( "-net" "user${PORTS_STRING}")
+fi 
 
 if [ "${QEMU_RUNNER_DISPLAY_TYPE}" == "console" ] ; then
   if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" != "none" ]  ; then
@@ -489,6 +526,7 @@ exec ${DRY_RUN_ARGUMENTS} ${QEMU_RUNNER_BINARY} \
   -device virtio-rng-pci,rng=rng0,id=rng-device0 \
   -device virtio-balloon,free-page-reporting=on \
   "${VOLUMES_ARGUMENTS[@]}" \
+  "${NETWORK_ARGUMENTS[@]}" \
   "${VSOCK_ARGUMENTS[@]}" \
   "${TPM2_ARGUMENTS[@]}" \
   "${AUDIO_ARGUMENTS[@]}" \
