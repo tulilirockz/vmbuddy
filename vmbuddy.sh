@@ -36,6 +36,8 @@ Usage:
 
 Options:
 
+	--create:			Allocate space for non-existent disk images
+	--create-size:			Size for newly create disk images
 	--binary/-b:			QEMU binary to be used (i.e.: qemu-system-$(uname -m))
 	--uefi-binary/-u:		QEMU UEFI binary to be used (i.e.: /path/to/edk2)
 	--machine-type/--machine/-m:	Firmware used to boot the virtual machine (uefi/bios)
@@ -90,6 +92,8 @@ QEMU_RUNNER_SWTPM_BINARY="${QEMU_RUNNER_SWTPM_BINARY:-$(system_or_fallback "swtp
 QEMU_RUNNER_SWTPM_SETUP_BINARY="${QEMU_RUNNER_SWTPM_SETUP_BINARY:-$(system_or_fallback "swtpm_setup" "flatpak run --command=swtpm_setup org.virt_manager.virt-manager")}"
 QEMU_RUNNER_VSOCK="${QEMU_RUNNER_VSOCK:-1}"
 QEMU_RUNNER_VSOCK_CID="${QEMU_RUNNER_VSOCK_CID:-$(seq 1 9 | shuf | tr -d '\n')}"
+VMBUDDY_CREATE_IMAGE_FILES="${VMBUDDY_CREATE_IMAGE_FILES:-0}"
+VMBUDDY_CREATE_SIZE="${VMBUDDY_CREATE_SIZE:-20G}"
 
 # We want to use flathub whenever possible, but if the system stack is available then use that
 if [ "${VMBUDDY_AUTODETECT_QEMU}" == "1" ] && command -v "qemu-system-$(uname -m)" &>/dev/null && [ -e "/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2" ] ; then
@@ -134,6 +138,19 @@ while :; do
     --vsock-cid)
       if [ -n "$2" ]; then
         QEMU_RUNNER_VSOCK_CID="${QEMU_RUNNER_VSOCK_CID:-$2}"
+        shift
+        shift
+      else
+        invalid_args_die
+      fi
+      ;;
+    --create)
+      shift
+      VMBUDDY_CREATE_IMAGE_FILES="1"
+      ;;
+    --create-size)
+      if [ -n "$2" ]; then
+        VMBUDDY_CREATE_SIZE="${2}"
         shift
         shift
       else
@@ -268,6 +285,18 @@ while :; do
   esac
 done
 
+if [ "${QEMU_RUNNER_DRY_RUN}" == "1" ] ; then
+  DRY_RUN_ARGUMENTS=("echo")
+fi
+
+if [ "${VMBUDDY_CREATE_IMAGE_FILES}" == "1" ] ; then  
+  for IMAGE_FILE in "${QEMU_RUNNER_IMAGE_FILES[@]}" ; do
+    if [ ! -e "${IMAGE_FILE}" ] ; then
+       ${DRY_RUN_ARGUMENTS} fallocate -l "${VMBUDDY_CREATE_SIZE}" "${IMAGE_FILE}"
+    fi
+  done
+fi
+
 if [ "${QEMU_RUNNER_DISPLAY_TYPE}" == "console" ] ; then
   if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" != "none" ]  ; then
     printf "%s" "Acceleration type must be none when console display type is selected" 2>&1
@@ -328,10 +357,6 @@ if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] || [ "${QEMU_RUNNER_ACCELER
   SANDBOX_ARGUMENTS=()
 fi
 
-if [ "${QEMU_RUNNER_DRY_RUN}" == "1" ] ; then
-  DRY_RUN_ARGUMENTS=("echo")
-fi
-
 if [ "${QEMU_RUNNER_TPM2}" == "1" ] ; then
   pkill swtpm || true
   pkill swtpm_setup || true
@@ -350,10 +375,10 @@ if [ "${QEMU_RUNNER_TPM2}" == "1" ] ; then
 ; then
     echo "Failed setting up TPM state, setting to temporary directory."
     QEMU_RUNNER_TPM_STATE_DIR="$(mktemp -d)"
-    ${QEMU_RUNNER_SWTPM_SETUP_BINARY} "${SWTPM_ARGS[@]}" >/dev/null
+    ${DRY_RUN_ARGUMENTS} ${QEMU_RUNNER_SWTPM_SETUP_BINARY} "${SWTPM_ARGS[@]}" >/dev/null
   fi
 
-  ${QEMU_RUNNER_SWTPM_BINARY} socket --tpmstate "dir=${QEMU_RUNNER_TPM_STATE_DIR}" \
+  ${DRY_RUN_ARGUMENTS} ${QEMU_RUNNER_SWTPM_BINARY} socket --tpmstate "dir=${QEMU_RUNNER_TPM_STATE_DIR}" \
     --ctrl type=unixio,path="${QEMU_RUNNER_TPM_STATE_DIR}/swtpm-sock" \
     --tpm2 \
     --log level=20 &>/dev/null &
