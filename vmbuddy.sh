@@ -38,6 +38,7 @@ Options:
 
 	--create:			Allocate space for non-existent disk images
 	--create-size:			Size for newly create disk images
+	--volume/-v:			Path to folder to be shared to the virtual machine (via 9p), can be specified multiple times. (format: source:mount_tag, if no tag is specified the foler name with be the tag)
 	--binary/-b:			QEMU binary to be used (i.e.: qemu-system-$(uname -m))
 	--uefi-binary/-u:		QEMU UEFI binary to be used (i.e.: /path/to/edk2)
 	--machine-type/--machine/-m:	Firmware used to boot the virtual machine (uefi/bios)
@@ -55,7 +56,7 @@ Options:
 	--tpm-swtpm-binary:		Binary to be used for swtpm (i.e.: swtpm)
 	--tpm-swtpm-setup-binary:	Binary to be used for swtpm_setup (i.e.: swtpm_setup)
 	--tpm-state-dir:		Directory to be used to store TPM2 state (default: ${XDG_DATA_DIR:-${HOME}/.local/share}/vmbuddy/tpmstate)
-	--verbose/--debug/-v:		Show more verbosity
+	--verbose/--debug:		Show more verbosity
 	--version:			Show version
 	--help/-h:			Show this help
 EOF
@@ -84,6 +85,7 @@ QEMU_RUNNER_MACHINE_TYPE="${QEMU_RUNNER_MACHINE_TYPE:-uefi}"
 QEMU_EXTRA_ARGS="${QEMU_EXTRA_ARGS:-}"
 QEMU_RUNNER_ISO_FILE="${QEMU_RUNNER_ISO_FILE:-}"
 QEMU_RUNNER_IMAGE_FILES=( ${QEMU_RUNNER_IMAGE_FILES} )
+QEMU_RUNNER_VOLUMES=( ${QEMU_RUNNER_VOLUMES} )
 VMBUDDY_AUTODETECT_QEMU="${VMBUDDY_AUTODETECT_QEMU:-1}"
 QEMU_RUNNER_BINARY="${QEMU_RUNNER_BINARY:-$(system_or_fallback "qemu-system-$(uname -m)" "flatpak run --command=qemu-system-$(uname -m) org.virt_manager.virt-manager")}"
 QEMU_RUNNER_TPM2="${QEMU_RUNNER_TPM2:-1}"
@@ -260,9 +262,18 @@ while :; do
       shift
       QEMU_RUNNER_DRY_RUN="1"
       ;;
-    -v | --verbose | --debug)
+    --verbose | --debug)
       set -x
       shift
+      ;;
+    -v | --volume)
+      if [ -n "$2" ]; then
+        QEMU_RUNNER_VOLUMES+=("$2")
+        shift
+        shift
+      else
+      	break
+      fi
       ;;
   	--)
       shift
@@ -296,6 +307,20 @@ if [ "${VMBUDDY_CREATE_IMAGE_FILES}" == "1" ] ; then
     fi
   done
 fi
+
+VOLUMES_ARGUMENTS=()
+for VOLUME_STATEMENT in "${QEMU_RUNNER_VOLUMES[@]}" ; do
+  VOLUME_FOLDER="$(cut -f1 -d: <<< "${VOLUME_STATEMENT}")"
+  VOLUME_TAG="$(cut -f2 -d: <<< "${VOLUME_STATEMENT}")"
+
+  if [ "${VOLUME_TAG}" == "${VOLUME_STATEMENT}" ] ; then
+    VOLUME_TAG="$(basename "${VOLUME_FOLDER}")"
+  fi
+  
+  VOLUMES_ARGUMENTS+=(
+    "-virtfs" "local,path=${VOLUME_FOLDER},mount_tag=${VOLUME_TAG},security_model=mapped-xattr"
+  )
+done
 
 if [ "${QEMU_RUNNER_DISPLAY_TYPE}" == "console" ] ; then
   if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" != "none" ]  ; then
@@ -463,6 +488,7 @@ exec ${DRY_RUN_ARGUMENTS} ${QEMU_RUNNER_BINARY} \
   -object rng-random,filename=/dev/urandom,id=rng0 \
   -device virtio-rng-pci,rng=rng0,id=rng-device0 \
   -device virtio-balloon,free-page-reporting=on \
+  "${VOLUMES_ARGUMENTS[@]}" \
   "${VSOCK_ARGUMENTS[@]}" \
   "${TPM2_ARGUMENTS[@]}" \
   "${AUDIO_ARGUMENTS[@]}" \
