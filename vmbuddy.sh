@@ -36,6 +36,7 @@ Usage:
 
 Options:
 
+	--architecture/--arch:			Architecture to use when running QEMU (enables software emulation) (default: $(uname -m))
 	--create:			Allocate space for non-existent disk images
 	--create-size:			Size for newly create disk images
 	--volume/-v:			Path to folder to be shared to the virtual machine (via 9p), can be specified multiple times. (format: source:mount_tag, if no tag is specified the folder name with be the tag)
@@ -90,7 +91,6 @@ QEMU_RUNNER_IMAGE_FILES=( ${QEMU_RUNNER_IMAGE_FILES} )
 QEMU_RUNNER_VOLUMES=( ${QEMU_RUNNER_VOLUMES} )
 QEMU_RUNNER_PORTS=( ${QEMU_RUNNER_PORTS} )
 VMBUDDY_AUTODETECT_QEMU="${VMBUDDY_AUTODETECT_QEMU:-1}"
-QEMU_RUNNER_BINARY="${QEMU_RUNNER_BINARY:-$(system_or_fallback "qemu-system-$(uname -m)" "flatpak run --command=qemu-system-$(uname -m) org.virt_manager.virt-manager")}"
 QEMU_RUNNER_TPM2="${QEMU_RUNNER_TPM2:-1}"
 QEMU_RUNNER_TPM_STATE_DIR="${QEMU_RUNNER_TPM_STATE_DIR:-${XDG_DATA_DIR:-$HOME/.local/share}/vmbuddy/tpmstate}"
 QEMU_RUNNER_SWTPM_BINARY="${QEMU_RUNNER_SWTPM_BINARY:-$(system_or_fallback "swtpm" "flatpak run --command=swtpm org.virt_manager.virt-manager")}"
@@ -98,22 +98,25 @@ QEMU_RUNNER_SWTPM_SETUP_BINARY="${QEMU_RUNNER_SWTPM_SETUP_BINARY:-$(system_or_fa
 QEMU_RUNNER_VSOCK="${QEMU_RUNNER_VSOCK:-1}"
 QEMU_RUNNER_VSOCK_CID="${QEMU_RUNNER_VSOCK_CID:-$(seq 1 9 | shuf | tr -d '\n')}"
 QEMU_RUNNER_NETWORK="${QEMU_RUNNER_NETWORK:-1}"
+QEMU_RUNNER_ARCHITECTURE="${QEMU_RUNNER_ARCHITECTURE:-$(uname -m)}"
+QEMU_RUNNER_BINARY="${QEMU_RUNNER_BINARY:-$(system_or_fallback "qemu-system-${QEMU_RUNNER_ARCHITECTURE}" "flatpak run --command=qemu-system-${QEMU_RUNNER_ARCHITECTURE} org.virt_manager.virt-manager")}"
 VMBUDDY_CREATE_IMAGE_FILES="${VMBUDDY_CREATE_IMAGE_FILES:-0}"
 VMBUDDY_CREATE_SIZE="${VMBUDDY_CREATE_SIZE:-20G}"
 
 # We want to use flathub whenever possible, but if the system stack is available then use that
-if [ "${VMBUDDY_AUTODETECT_QEMU}" == "1" ] && command -v "qemu-system-$(uname -m)" &>/dev/null && [ -e "/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2" ] ; then
+if [ "${VMBUDDY_AUTODETECT_QEMU}" == "1" ] && command -v "qemu-system-${QEMU_RUNNER_ARCHITECTURE}" &>/dev/null && [ -e "/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2" ] ; then
   QEMU_RUNNER_UEFI_BINARY="/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2"
 else
-  QEMU_RUNNER_UEFI_BINARY="/app/lib/extensions/Qemu/share/qemu/edk2-$(uname -m)-code.fd"
+  QEMU_RUNNER_UEFI_BINARY="/app/lib/extensions/Qemu/share/qemu/edk2-${QEMU_RUNNER_ARCHITECTURE}-code.fd"
 fi
 
 while :; do
   case $1 in
     -f | --flatpak)
       shift
-      QEMU_RUNNER_BINARY="flatpak run --command=qemu-system-$(uname -m) org.virt_manager.virt-manager"
-      QEMU_RUNNER_UEFI_BINARY="/app/lib/extensions/Qemu/share/qemu/edk2-$(uname -m)-code.fd"
+      QEMU_RUNNER_BINARY="flatpak run --command=qemu-system-${QEMU_RUNNER_ARCHITECTURE} org.virt_manager.virt-manager"
+      QEMU_RUNNER_UEFI_BINARY="/app/lib/extensions/Qemu/share/qemu/edk2-${QEMU_RUNNER_ARCHITECTURE}-code.fd"
+      invalid_args_check "${2}" "x86" "x86_64" "aarch64" # No support for anything else currently
       ;;
     --no-tpm)
       shift
@@ -130,6 +133,16 @@ while :; do
     --tpm-swtpm-binary)
       if [ -n "$2" ]; then
         QEMU_RUNNER_SWTPM_BINARY="${2}"
+        shift
+        shift
+      else
+        invalid_args_die
+      fi
+      ;;
+    --arch | --architecture)
+      if [ -n "$2" ]; then
+        QEMU_RUNNER_ARCHITECTURE="${2}"
+        QEMU_RUNNER_BINARY="$(system_or_fallback "qemu-system-${QEMU_RUNNER_ARCHITECTURE}" "flatpak run --command=qemu-system-${QEMU_RUNNER_ARCHITECTURE} org.virt_manager.virt-manager")"
         shift
         shift
       else
@@ -504,12 +517,26 @@ if [ "${QEMU_RUNNER_AUDIO_TYPE}" == "pulseaudio" ] ; then
   )
 fi
 
-MACHINE_ARGUMENTS=(
-  "-machine" "q35,accel=kvm:tcg,smm=on,hpet=off"
-)
-if [ "${QEMU_RUNNER_MACHINE_TYPE}" == "uefi" ] ; then
+if [ "${QEMU_RUNNER_ARCHITECTURE}" != "$(uname -m)" ] ; then
   MACHINE_ARGUMENTS=(
-    "${MACHINE_ARGUMENTS[@]}"
+    "-machine" "virt,accel=tcg,usb=off,virtualization=true,secure=true"
+  )
+else
+  NATIVE_ARCHITECTURE_ARGUMENTS=(
+    "-cpu" "host"
+    "-rtc" "base=utc,driftfix=slew"
+    "-enable-kvm"
+  )
+fi
+
+if [[ "${QEMU_RUNNER_ARCHITECTURE}" =~ "x86" ]] ; then
+  MACHINE_ARGUMENTS=(
+    "-machine" "q35,accel=kvm:tcg,smm=on,hpet=off"
+  )
+fi
+
+if [ "${QEMU_RUNNER_MACHINE_TYPE}" == "uefi" ] ; then
+  MACHINE_ARGUMENTS+=(
     "-drive" "if=pflash,format=raw,readonly=on,file=${QEMU_RUNNER_UEFI_BINARY}"
     "-global" "driver=cfi.pflash01,property=secure,value=on"
   )
@@ -517,21 +544,18 @@ fi
 
 if [ "${QEMU_RUNNER_VSOCK}" == "1" ] ; then 
   VSOCK_ARGUMENTS=("-device" "vhost-vsock-pci,guest-cid=${QEMU_RUNNER_VSOCK_CID}")
-  echo "INFO: Use ssh vsock%${QEMU_RUNNER_VSOCK_CID} to connect to this VM's ssh server from the host"
+  echo "INFO: VSock exposed at ssh vsock%${QEMU_RUNNER_VSOCK_CID}"
 fi
 
 exec ${DRY_RUN_ARGUMENTS} ${QEMU_RUNNER_BINARY} \
-  -enable-kvm \
-  -cpu host \
   -device driver=qemu-xhci \
   -usb -device usb-tablet \
-  -rtc base=utc,driftfix=slew \
   -m "${QEMU_RUNNER_RAM}" \
   -smp "${QEMU_RUNNER_CPUS}" \
-  -device "vmgenid,guid=$(uuidgen)" \
   -object rng-random,filename=/dev/urandom,id=rng0 \
   -device virtio-rng-pci,rng=rng0,id=rng-device0 \
   -device virtio-balloon,free-page-reporting=on \
+  "${NATIVE_ARCHITECTURE_ARGUMENTS[@]}" \
   "${VOLUMES_ARGUMENTS[@]}" \
   "${NETWORK_ARGUMENTS[@]}" \
   "${VSOCK_ARGUMENTS[@]}" \
