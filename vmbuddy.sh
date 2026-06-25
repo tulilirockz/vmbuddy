@@ -392,6 +392,13 @@ if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "" ] || [ -z "${QEMU_RUNNER_ACCELERAT
   DISPLAY_ARGUMENTS=("-display" "${QEMU_RUNNER_DISPLAY_TYPE:-gtk}")
 fi
 
+if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "none" ] ; then
+  DISPLAY_ARGUMENTS+=(
+    "-device" "virtio-gpu-pci"
+  )
+fi
+
+
 if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "virgl" ] ; then
   VIRGL_ARGUMENTS=(
     "-vga" "virtio"
