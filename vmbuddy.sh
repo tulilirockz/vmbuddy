@@ -56,6 +56,7 @@ Options:
 	--no-vsock:			Launch without VSock integration
 	--vsock-cid:			ID for vsock socket (default: random number)
 	--no-tpm:			Launch without TPM2 software emulation
+	--no-sandbox:			Launch without QEMU sandboxing capabilities
 	--tpm-swtpm-binary:		Binary to be used for swtpm (i.e.: swtpm)
 	--tpm-swtpm-setup-binary:	Binary to be used for swtpm_setup (i.e.: swtpm_setup)
 	--tpm-state-dir:		Directory to be used to store TPM2 state (default: ${XDG_DATA_DIR:-${HOME}/.local/share}/vmbuddy/tpmstate)
@@ -98,6 +99,7 @@ QEMU_RUNNER_SWTPM_SETUP_BINARY="${QEMU_RUNNER_SWTPM_SETUP_BINARY:-$(system_or_fa
 QEMU_RUNNER_VSOCK="${QEMU_RUNNER_VSOCK:-1}"
 QEMU_RUNNER_VSOCK_CID="${QEMU_RUNNER_VSOCK_CID:-$(seq 1 9 | shuf | tr -d '\n')}"
 QEMU_RUNNER_NETWORK="${QEMU_RUNNER_NETWORK:-1}"
+QEMU_RUNNER_SANDBOX="${QEMU_RUNNER_SANDBOX:-1}"
 QEMU_RUNNER_ARCHITECTURE="${QEMU_RUNNER_ARCHITECTURE:-$(uname -m)}"
 QEMU_RUNNER_BINARY="${QEMU_RUNNER_BINARY:-$(system_or_fallback "qemu-system-${QEMU_RUNNER_ARCHITECTURE}" "flatpak run --command=qemu-system-${QEMU_RUNNER_ARCHITECTURE} org.virt_manager.virt-manager")}"
 VMBUDDY_CREATE_IMAGE_FILES="${VMBUDDY_CREATE_IMAGE_FILES:-0}"
@@ -124,6 +126,10 @@ while :; do
     --no-network)
       shift
       QEMU_RUNNER_NETWORK="0"
+      ;;
+    --no-sandbox)
+      shift
+      QEMU_RUNNER_SANDBOX="0"
       ;;
     --no-vsock)
       shift
@@ -405,12 +411,12 @@ if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "" ] || [ -z "${QEMU_RUNNER_ACCELERAT
   DISPLAY_ARGUMENTS=("-display" "${QEMU_RUNNER_DISPLAY_TYPE:-gtk}")
 fi
 
-if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "none" ] ; then
+
+if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "none" ] && [ "${QEMU_RUNNER_DISPLAY_TYPE}" != "console" ]; then
   DISPLAY_ARGUMENTS+=(
     "-device" "virtio-gpu-pci"
   )
 fi
-
 
 if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "virgl" ] ; then
   VIRGL_ARGUMENTS=(
@@ -419,24 +425,27 @@ if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "virgl" ] ; then
   )
 fi
 
-SANDBOX_ARGUMENTS=(
-  "-sandbox" "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"
-)
-if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] || [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "native-drm" ] ; then
-  VENUS_ARGUMENTS=(
-    "-display" "${QEMU_DISPLAY_STRING},gl=on"
-    "-object" "memory-backend-memfd,id=mem1,size=${QEMU_RUNNER_RAM}"
-    "-machine" "memory-backend=mem1"
-    "-vga" "none"
+SANDBOX_ARGUMENTS=()
+if [ "${QEMU_RUNNER_SANDBOX}" == "1" ] ; then
+  SANDBOX_ARGUMENTS=(
+    "-sandbox" "on,obsolete=deny,elevateprivileges=deny,spawn=deny,resourcecontrol=deny"
   )
-
-  if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] ; then
-    VENUS_ARGUMENTS+=("-device" "virtio-vga-gl,hostmem=${QEMU_RUNNER_RAM},blob=true,venus=true")
-  else
-    VENUS_ARGUMENTS+=("-device" "virtio-vga-gl,drm_native_context=on,hostmem=${QEMU_RUNNER_RAM},blob=true,venus=true")
+  if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] || [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "native-drm" ] ; then
+    VENUS_ARGUMENTS=(
+      "-display" "${QEMU_DISPLAY_STRING},gl=on"
+      "-object" "memory-backend-memfd,id=mem1,size=${QEMU_RUNNER_RAM}"
+      "-machine" "memory-backend=mem1"
+      "-vga" "none"
+    )
+  
+    if [ "${QEMU_RUNNER_ACCELERATION_TYPE}" == "venus" ] ; then
+      VENUS_ARGUMENTS+=("-device" "virtio-vga-gl,hostmem=${QEMU_RUNNER_RAM},blob=true,venus=true")
+    else
+      VENUS_ARGUMENTS+=("-device" "virtio-vga-gl,drm_native_context=on,hostmem=${QEMU_RUNNER_RAM},blob=true,venus=true")
+    fi
+  
+    SANDBOX_ARGUMENTS=()
   fi
-
-  SANDBOX_ARGUMENTS=()
 fi
 
 if [ "${QEMU_RUNNER_TPM2}" == "1" ] ; then
