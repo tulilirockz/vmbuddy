@@ -106,8 +106,9 @@ VMBUDDY_CREATE_IMAGE_FILES="${VMBUDDY_CREATE_IMAGE_FILES:-0}"
 VMBUDDY_CREATE_SIZE="${VMBUDDY_CREATE_SIZE:-20G}"
 
 # We want to use flathub whenever possible, but if the system stack is available then use that
-if [ "${VMBUDDY_AUTODETECT_QEMU}" == "1" ] && command -v "qemu-system-${QEMU_RUNNER_ARCHITECTURE}" &>/dev/null && [ -e "/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2" ] ; then
-  QEMU_RUNNER_UEFI_BINARY="/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2"
+if [ "${VMBUDDY_AUTODETECT_QEMU}" == "1" ] && command -v "qemu-system-${QEMU_RUNNER_ARCHITECTURE}" &>/dev/null ; then
+  [ -e "/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2" ] && QEMU_RUNNER_UEFI_BINARY="/usr/share/edk2/ovmf/OVMF_CODE_4M.qcow2"
+  [ -e "/usr/share/OVMF/OVMF_CODE_4M.fd" ] && QEMU_RUNNER_UEFI_BINARY="/usr/share/OVMF/OVMF_CODE_4M.fd"  
 else
   QEMU_RUNNER_UEFI_BINARY="/app/lib/extensions/Qemu/share/qemu/edk2-${QEMU_RUNNER_ARCHITECTURE}-code.fd"
 fi
